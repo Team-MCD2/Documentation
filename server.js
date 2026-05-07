@@ -7,8 +7,12 @@ require('dotenv').config();
 const db = require('./db');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 8001;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'devdocs-secret-2024';
+
+// Health check
+app.get('/api/health', (req, res) => res.json({ status: 'ok', vercel: !!process.env.VERCEL }));
 
 // On Vercel, filesystem is read-only except /tmp (ephemeral)
 const IS_VERCEL = !!process.env.VERCEL;
