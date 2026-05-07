@@ -10,7 +10,9 @@ const app = express();
 const PORT = process.env.PORT || 8001;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'devdocs-secret-2024';
 
-const DATA_DIR = path.join(__dirname, 'data');
+// On Vercel, filesystem is read-only except /tmp (ephemeral)
+const IS_VERCEL = !!process.env.VERCEL;
+const DATA_DIR = IS_VERCEL ? '/tmp' : path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -166,11 +168,14 @@ app.delete('/api/attachments/:id', requireAuth, (req, res) => {
 
 app.use('/uploads', express.static(UPLOAD_DIR));
 
-// ── Serve frontend ───────────────────────────────────────────────────────────
-const dist = path.join(__dirname, 'frontend', 'dist');
-if (require('fs').existsSync(dist)) {
-  app.use(express.static(dist));
-  app.get('/{*path}', (req, res) => res.sendFile(path.join(dist, 'index.html')));
+// ── Serve frontend (local dev only, Vercel serves static separately) ────────
+if (!IS_VERCEL) {
+  const dist = path.join(__dirname, 'frontend', 'dist');
+  if (fs.existsSync(dist)) {
+    app.use(express.static(dist));
+    app.get('/{*path}', (req, res) => res.sendFile(path.join(dist, 'index.html')));
+  }
+  app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
 }
 
-app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+module.exports = app;
