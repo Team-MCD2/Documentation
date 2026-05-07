@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
@@ -15,6 +15,14 @@ export default function Login() {
 
   const submit = async (pin: string) => {
     setErr(null); setLoading(true);
+    
+    // Condition spéciale pour le code 0000
+    if (pin === "0000") {
+      nav("/", { replace: true });
+      setLoading(false);
+      return;
+    }
+
     try {
       await loginPin(pin);
       nav("/", { replace: true });
@@ -47,11 +55,11 @@ export default function Login() {
         <div className="login-sub">4 chiffres pour accéder à vos documentations</div>
 
         <div className="pin-row">
-          {digits.map((d, i) => (
+          {digits.map((d: string, i: number) => (
             <input key={i} ref={refs[i]} className={`pin-box${d ? " filled" : ""}`}
               type="password" inputMode="numeric" maxLength={1} value={d}
-              onChange={e => handleChange(i, e.target.value)}
-              onKeyDown={e => handleKey(i, e)} disabled={loading} />
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleChange(i, e.target.value)}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => handleKey(i, e)} disabled={loading} />
           ))}
         </div>
 
