@@ -27,12 +27,18 @@ const requireAuth = (req, res, next) => {
 };
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
-app.post('/api/auth/login', (req, res) => {
-  const { pin } = req.body;
-  if (!pin) return res.status(400).json({ detail: 'pin_required' });
-  if (pin !== db.getPin()) return res.status(401).json({ detail: 'invalid_pin' });
-  req.session.auth = true;
-  res.json({ ok: true });
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ detail: 'pin_required' });
+    const storedPin = await db.getPin();
+    if (pin !== storedPin) return res.status(401).json({ detail: 'invalid_pin' });
+    req.session.auth = true;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -44,126 +50,225 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ authenticated: !!req.session?.auth });
 });
 
-app.put('/api/auth/pin', requireAuth, (req, res) => {
-  const { currentPin, newPin } = req.body;
-  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ detail: 'invalid_pin_format' });
-  if (currentPin !== db.getPin()) return res.status(401).json({ detail: 'invalid_current_pin' });
-  db.setPin(newPin);
-  res.json({ ok: true });
+app.put('/api/auth/pin', requireAuth, async (req, res) => {
+  try {
+    const { currentPin, newPin } = req.body;
+    if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ detail: 'invalid_pin_format' });
+    const storedPin = await db.getPin();
+    if (currentPin !== storedPin) return res.status(401).json({ detail: 'invalid_current_pin' });
+    await db.setPin(newPin);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PIN update error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
 // ── Documentations ───────────────────────────────────────────────────────────
-app.get('/api/docs', requireAuth, (req, res) => {
-  res.json({ docs: db.listDocs() });
+app.get('/api/docs', requireAuth, async (req, res) => {
+  try {
+    const docs = await db.listDocs();
+    res.json({ docs });
+  } catch (err) {
+    console.error('List docs error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.post('/api/docs', requireAuth, (req, res) => {
-  const { name, title, url, description, color, icon } = req.body;
-  if (!name?.trim() || !title?.trim()) return res.status(400).json({ detail: 'name_title_required' });
-  const id = db.uuidv4();
-  db.createDoc(id, name.trim(), title.trim(), url || '', description || '', color || '#3b82f6', icon || 'BookOpen');
-  res.json({ id });
+app.post('/api/docs', requireAuth, async (req, res) => {
+  try {
+    const { name, title, url, description, color, icon } = req.body;
+    if (!name?.trim() || !title?.trim()) return res.status(400).json({ detail: 'name_title_required' });
+    const id = db.uuidv4();
+    await db.createDoc(id, name.trim(), title.trim(), url || '', description || '', color || '#3b82f6', icon || 'BookOpen');
+    res.json({ id });
+  } catch (err) {
+    console.error('Create doc error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.get('/api/docs/:id', requireAuth, (req, res) => {
-  const doc = db.getDoc(req.params.id);
-  if (!doc) return res.status(404).json({ detail: 'not_found' });
-  const sections = db.listSections(req.params.id);
-  const pages = db.listPages(req.params.id);
-  res.json({ doc, sections, pages });
+app.get('/api/docs/:id', requireAuth, async (req, res) => {
+  try {
+    const doc = await db.getDoc(req.params.id);
+    if (!doc) return res.status(404).json({ detail: 'not_found' });
+    const sections = await db.listSections(req.params.id);
+    const pages = await db.listPages(req.params.id);
+    res.json({ doc, sections, pages });
+  } catch (err) {
+    console.error('Get doc error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.put('/api/docs/:id', requireAuth, (req, res) => {
-  const { name, title, url, description, color, icon } = req.body;
-  if (!name?.trim() || !title?.trim()) return res.status(400).json({ detail: 'name_title_required' });
-  db.updateDoc(req.params.id, name.trim(), title.trim(), url || '', description || '', color || '#3b82f6', icon || 'BookOpen');
-  res.json({ ok: true });
+app.put('/api/docs/:id', requireAuth, async (req, res) => {
+  try {
+    const { name, title, url, description, color, icon } = req.body;
+    if (!name?.trim() || !title?.trim()) return res.status(400).json({ detail: 'name_title_required' });
+    await db.updateDoc(req.params.id, name.trim(), title.trim(), url || '', description || '', color || '#3b82f6', icon || 'BookOpen');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Update doc error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.delete('/api/docs/:id', requireAuth, (req, res) => {
-  db.deleteDoc(req.params.id);
-  res.json({ ok: true });
+app.delete('/api/docs/:id', requireAuth, async (req, res) => {
+  try {
+    await db.deleteDoc(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete doc error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
 // ── Sections ─────────────────────────────────────────────────────────────────
-app.post('/api/docs/:docId/sections', requireAuth, (req, res) => {
-  const { title, orderIndex, parentId } = req.body;
-  if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
-  const id = db.uuidv4();
-  db.createSection(id, req.params.docId, title.trim(), orderIndex || 0, parentId || null);
-  res.json({ id });
+app.post('/api/docs/:docId/sections', requireAuth, async (req, res) => {
+  try {
+    const { title, orderIndex, parentId } = req.body;
+    if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
+    const id = db.uuidv4();
+    await db.createSection(id, req.params.docId, title.trim(), orderIndex || 0, parentId || null);
+    res.json({ id });
+  } catch (err) {
+    console.error('Create section error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.put('/api/sections/:id', requireAuth, (req, res) => {
-  const { title } = req.body;
-  if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
-  db.updateSection(req.params.id, title.trim());
-  res.json({ ok: true });
+app.put('/api/sections/:id', requireAuth, async (req, res) => {
+  try {
+    const { title } = req.body;
+    if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
+    await db.updateSection(req.params.id, title.trim());
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Update section error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.delete('/api/sections/:id', requireAuth, (req, res) => {
-  db.deleteSection(req.params.id);
-  res.json({ ok: true });
+app.delete('/api/sections/:id', requireAuth, async (req, res) => {
+  try {
+    await db.deleteSection(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete section error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.patch('/api/sections/:id/order', requireAuth, (req, res) => {
-  db.reorderSection(req.params.id, req.body.orderIndex ?? 0);
-  res.json({ ok: true });
+app.patch('/api/sections/:id/order', requireAuth, async (req, res) => {
+  try {
+    await db.reorderSection(req.params.id, req.body.orderIndex ?? 0);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Reorder section error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
 // ── Pages ────────────────────────────────────────────────────────────────────
-app.post('/api/docs/:docId/pages', requireAuth, (req, res) => {
-  const { sectionId, title, content, orderIndex } = req.body;
-  if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
-  const id = db.uuidv4();
-  db.createPage(id, req.params.docId, sectionId || null, title.trim(), content || '', orderIndex || 0);
-  res.json({ id });
+app.post('/api/docs/:docId/pages', requireAuth, async (req, res) => {
+  try {
+    const { sectionId, title, content, orderIndex } = req.body;
+    if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
+    const id = db.uuidv4();
+    await db.createPage(id, req.params.docId, sectionId || null, title.trim(), content || '', orderIndex || 0);
+    res.json({ id });
+  } catch (err) {
+    console.error('Create page error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.get('/api/pages/:id', requireAuth, (req, res) => {
-  const page = db.getPage(req.params.id);
-  if (!page) return res.status(404).json({ detail: 'not_found' });
-  res.json({ page });
+app.get('/api/pages/:id', requireAuth, async (req, res) => {
+  try {
+    const page = await db.getPage(req.params.id);
+    if (!page) return res.status(404).json({ detail: 'not_found' });
+    res.json({ page });
+  } catch (err) {
+    console.error('Get page error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.put('/api/pages/:id', requireAuth, (req, res) => {
-  const { title, content } = req.body;
-  if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
-  db.updatePage(req.params.id, title.trim(), content ?? '');
-  res.json({ ok: true });
+app.put('/api/pages/:id', requireAuth, async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    if (!title?.trim()) return res.status(400).json({ detail: 'title_required' });
+    await db.updatePage(req.params.id, title.trim(), content ?? '');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Update page error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.delete('/api/pages/:id', requireAuth, (req, res) => {
-  db.deletePage(req.params.id);
-  res.json({ ok: true });
+app.delete('/api/pages/:id', requireAuth, async (req, res) => {
+  try {
+    await db.deletePage(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete page error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.patch('/api/pages/:id/move', requireAuth, (req, res) => {
-  db.movePage(req.params.id, req.body.sectionId || null, req.body.orderIndex ?? 0);
-  res.json({ ok: true });
+app.patch('/api/pages/:id/move', requireAuth, async (req, res) => {
+  try {
+    await db.movePage(req.params.id, req.body.sectionId || null, req.body.orderIndex ?? 0);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Move page error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.get('/api/docs/:docId/search', requireAuth, (req, res) => {
-  const q = req.query.q || '';
-  if (!q) return res.json({ results: [] });
-  res.json({ results: db.searchPages(req.params.docId, q) });
+app.get('/api/docs/:docId/search', requireAuth, async (req, res) => {
+  try {
+    const q = req.query.q || '';
+    if (!q) return res.json({ results: [] });
+    const results = await db.searchPages(req.params.docId, q);
+    res.json({ results });
+  } catch (err) {
+    console.error('Search error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
 // ── File Attachments ─────────────────────────────────────────────────────────
-app.get('/api/pages/:pageId/attachments', requireAuth, (req, res) => {
-  res.json({ attachments: db.listAttachments(req.params.pageId) });
+app.get('/api/pages/:pageId/attachments', requireAuth, async (req, res) => {
+  try {
+    const attachments = await db.listAttachments(req.params.pageId);
+    res.json({ attachments });
+  } catch (err) {
+    console.error('List attachments error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.post('/api/pages/:pageId/attachments', requireAuth, upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ detail: 'file_required' });
-  const { originalname, mimetype, size, filename } = req.file;
-  db.addAttachment(req.params.pageId, filename, originalname, mimetype, size);
-  res.json({ ok: true, id: filename, originalName: originalname, mimeType: mimetype, size });
+app.post('/api/pages/:pageId/attachments', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ detail: 'file_required' });
+    const { originalname, mimetype, size, filename } = req.file;
+    await db.addAttachment(req.params.pageId, filename, originalname, mimetype, size);
+    res.json({ ok: true, id: filename, originalName: originalname, mimeType: mimetype, size });
+  } catch (err) {
+    console.error('Add attachment error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
-app.delete('/api/attachments/:id', requireAuth, (req, res) => {
-  db.deleteAttachment(req.params.id);
-  res.json({ ok: true });
+app.delete('/api/attachments/:id', requireAuth, async (req, res) => {
+  try {
+    await db.deleteAttachment(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete attachment error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
 });
 
 app.use('/uploads', express.static(UPLOAD_DIR));
@@ -175,7 +280,20 @@ if (!IS_VERCEL) {
     app.use(express.static(dist));
     app.get('/{*path}', (req, res) => res.sendFile(path.join(dist, 'index.html')));
   }
-  app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
 }
+
+// ── Initialize Turso DB and start server ──────────────────────────────────────
+const startServer = async () => {
+  try {
+    await db.initDb();
+    console.log('✓ Turso database initialized');
+    app.listen(PORT, () => console.log(`✓ Server running at http://localhost:${PORT}`));
+  } catch (err) {
+    console.error('✗ Failed to start server:', err);
+    process.exit(1);
+  }
+};
+
+if (!IS_VERCEL) startServer();
 
 module.exports = app;
