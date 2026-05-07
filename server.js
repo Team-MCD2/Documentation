@@ -65,6 +65,32 @@ app.put('/api/auth/pin', requireAuth, async (req, res) => {
   }
 });
 
+// ── Admin: Reset PIN (for initialization/recovery) ─────────────────────────
+app.post('/api/admin/reset-pin', async (req, res) => {
+  try {
+    const adminKey = req.headers['x-admin-key'];
+    const expectedKey = process.env.ADMIN_KEY || 'admin-reset-key-2024';
+    
+    if (adminKey !== expectedKey) {
+      return res.status(403).json({ detail: 'invalid_admin_key' });
+    }
+    
+    const { pin } = req.body || {};
+    const newPin = pin || process.env.DEFAULT_PIN || '0000';
+    
+    if (!/^\d{4}$/.test(newPin)) {
+      return res.status(400).json({ detail: 'invalid_pin_format' });
+    }
+    
+    await db.setPin(newPin);
+    console.log(`✓ PIN reset to: ${newPin}`);
+    res.json({ ok: true, pin: newPin });
+  } catch (err) {
+    console.error('Admin reset PIN error:', err);
+    res.status(500).json({ detail: 'internal_error' });
+  }
+});
+
 // ── Documentations ───────────────────────────────────────────────────────────
 app.get('/api/docs', requireAuth, async (req, res) => {
   try {
