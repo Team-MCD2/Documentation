@@ -11,10 +11,18 @@
       "config": { "distDir": "dist" }
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "server.js"
+      "source": "/api/(.*)",
+      "destination": "server.js"
+    },
+    {
+      "source": "/uploads/(.*)",
+      "destination": "server.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "frontend/$1"
     }
   ]
 }

@@ -4,19 +4,19 @@ const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 // ── Initialize Supabase Client ───────────────────────────────────────────────
-let supabase = null;
+const url = process.env.SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!url || !serviceKey) {
+  console.warn('Warning: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. DB operations will fail.');
+}
+
+const supabase = (url && serviceKey) ? createClient(url, serviceKey) : null;
 
 const initDb = async () => {
-  if (supabase) return supabase;
-  
-  const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  
-  if (!url || !serviceKey) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
+  if (!supabase) {
+    throw new Error('Supabase client not initialized. Check your environment variables.');
   }
-  
-  supabase = createClient(url, serviceKey);
   return supabase;
 };
 
