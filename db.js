@@ -85,13 +85,26 @@ const initTables = async () => {
       console.error('Error initializing table:', err);
     }
   }
+  
+  // Initialize default PIN if not set
+  try {
+    const pinResult = await db.execute('SELECT value FROM settings WHERE key = ?', ['pin']);
+    if (!pinResult.rows || pinResult.rows.length === 0) {
+      await db.execute('INSERT INTO settings (key, value) VALUES (?, ?)', ['pin', '0000']);
+      console.log('✓ Initialized default PIN: 0000');
+    }
+  } catch (err) {
+    console.error('Error initializing PIN:', err);
+  }
 };
 
 // ── Settings (PIN) ───────────────────────────────────────────────────────────
 const getPin = async () => {
   try {
     const result = await db.execute('SELECT value FROM settings WHERE key = ?', ['pin']);
-    return result.rows[0]?.value || '0000';
+    const pin = result.rows?.[0]?.value || '0000';
+    console.log(`getPin() returned: "${pin}" (rows: ${result.rows?.length || 0})`);
+    return pin;
   } catch (err) {
     console.error('Error getting PIN:', err);
     return '0000';

@@ -32,6 +32,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { pin } = req.body;
     if (!pin) return res.status(400).json({ detail: 'pin_required' });
     const storedPin = await db.getPin();
+    console.log(`Login attempt: provided="${pin}", stored="${storedPin}"`);
     if (pin !== storedPin) return res.status(401).json({ detail: 'invalid_pin' });
     req.session.auth = true;
     res.json({ ok: true });
