@@ -90,8 +90,9 @@ const initTables = async () => {
   try {
     const pinResult = await db.execute('SELECT value FROM settings WHERE key = ?', ['pin']);
     if (!pinResult.rows || pinResult.rows.length === 0) {
-      await db.execute('INSERT INTO settings (key, value) VALUES (?, ?)', ['pin', '0000']);
-      console.log('✓ Initialized default PIN: 0000');
+      const defaultPin = process.env.DEFAULT_PIN || '0000';
+      await db.execute('INSERT INTO settings (key, value) VALUES (?, ?)', ['pin', defaultPin]);
+      console.log(`✓ Initialized default PIN: ${defaultPin}`);
     }
   } catch (err) {
     console.error('Error initializing PIN:', err);
