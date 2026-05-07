@@ -1,111 +1,38 @@
-﻿// ── Documentation Platform DB (Turso/LibSQL) ────────────────────────────────
-const { createClient } = require('@libsql/client');
+// ── Documentation Platform DB (Supabase) ──────────────────────────────────
+const { createClient } = require('@supabase/supabase-js');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
-// ── Initialize Turso Client ──────────────────────────────────────────────────
-let db = null;
+// ── Initialize Supabase Client ───────────────────────────────────────────────
+let supabase = null;
 
 const initDb = async () => {
-  if (db) return db;
+  if (supabase) return supabase;
   
-  const url = process.env.TURSO_CONNECTION_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
+  const url = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   
-  if (!url || !authToken) {
-    throw new Error('Missing TURSO_CONNECTION_URL or TURSO_AUTH_TOKEN environment variables');
+  if (!url || !serviceKey) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
   }
   
-  db = createClient({
-    url,
-    authToken,
-  });
-  
-  // Initialize tables if they don't exist
-  await initTables();
-  return db;
+  supabase = createClient(url, serviceKey);
+  return supabase;
 };
 
-const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
-
-// ── Initialize Tables ────────────────────────────────────────────────────────
-const initTables = async () => {
-  const statements = [
-    `CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS docs (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      title TEXT NOT NULL,
-      url TEXT,
-      description TEXT,
-      color TEXT,
-      icon TEXT,
-      created_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS sections (
-      id TEXT PRIMARY KEY,
-      doc_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      order_index INTEGER DEFAULT 0,
-      parent_id TEXT,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (doc_id) REFERENCES docs(id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS pages (
-      id TEXT PRIMARY KEY,
-      doc_id TEXT NOT NULL,
-      section_id TEXT,
-      title TEXT NOT NULL,
-      content TEXT,
-      order_index INTEGER DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (doc_id) REFERENCES docs(id),
-      FOREIGN KEY (section_id) REFERENCES sections(id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS attachments (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL,
-      filename TEXT NOT NULL,
-      original_name TEXT,
-      mime_type TEXT,
-      size INTEGER,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (page_id) REFERENCES pages(id)
-    )`,
-  ];
-  
-  for (const sql of statements) {
-    try {
-      await db.execute(sql);
-    } catch (err) {
-      console.error('Error initializing table:', err);
-    }
-  }
-  
-  // Initialize default PIN if not set
-  try {
-    const pinResult = await db.execute('SELECT value FROM settings WHERE key = ?', ['pin']);
-    if (!pinResult.rows || pinResult.rows.length === 0) {
-      const defaultPin = process.env.DEFAULT_PIN || '0000';
-      await db.execute('INSERT INTO settings (key, value) VALUES (?, ?)', ['pin', defaultPin]);
-      console.log(`✓ Initialized default PIN: ${defaultPin}`);
-    }
-  } catch (err) {
-    console.error('Error initializing PIN:', err);
-  }
-};
+const now = () => new Date().toISOString();
 
 // ── Settings (PIN) ───────────────────────────────────────────────────────────
 const getPin = async () => {
   try {
-    const result = await db.execute('SELECT value FROM settings WHERE key = ?', ['pin']);
-    const pin = result.rows?.[0]?.value || '0000';
-    console.log(`getPin() returned: "${pin}" (rows: ${result.rows?.length || 0})`);
-    return pin;
+    const { data, error } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'pin')
+      .single();
+    
+    if (error) throw error;
+    return data?.value || '0000';
   } catch (err) {
     console.error('Error getting PIN:', err);
     return '0000';
@@ -114,8 +41,10 @@ const getPin = async () => {
 
 const setPin = async (pin) => {
   try {
-    await db.execute('DELETE FROM settings WHERE key = ?', ['pin']);
-    await db.execute('INSERT INTO settings (key, value) VALUES (?, ?)', ['pin', pin]);
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ key: 'pin', value: pin });
+    if (error) throw error;
   } catch (err) {
     console.error('Error setting PIN:', err);
   }
@@ -124,8 +53,12 @@ const setPin = async (pin) => {
 // ── Documentations ───────────────────────────────────────────────────────────
 const listDocs = async () => {
   try {
-    const result = await db.execute('SELECT * FROM docs ORDER BY created_at DESC');
-    return result.rows || [];
+    const { data, error } = await supabase
+      .from('docs')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
   } catch (err) {
     console.error('Error listing docs:', err);
     return [];
@@ -134,10 +67,10 @@ const listDocs = async () => {
 
 const createDoc = async (id, name, title, url, description, color, icon) => {
   try {
-    await db.execute(
-      'INSERT INTO docs (id, name, title, url, description, color, icon, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, name, title, url || null, description || null, color || null, icon || null, now()]
-    );
+    const { error } = await supabase
+      .from('docs')
+      .insert([{ id, name, title, url, description, color, icon }]);
+    if (error) throw error;
   } catch (err) {
     console.error('Error creating doc:', err);
   }
@@ -145,8 +78,13 @@ const createDoc = async (id, name, title, url, description, color, icon) => {
 
 const getDoc = async (id) => {
   try {
-    const result = await db.execute('SELECT * FROM docs WHERE id = ?', [id]);
-    return result.rows[0] || null;
+    const { data, error } = await supabase
+      .from('docs')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) throw error;
+    return data;
   } catch (err) {
     console.error('Error getting doc:', err);
     return null;
@@ -155,10 +93,11 @@ const getDoc = async (id) => {
 
 const updateDoc = async (id, name, title, url, description, color, icon) => {
   try {
-    await db.execute(
-      'UPDATE docs SET name = ?, title = ?, url = ?, description = ?, color = ?, icon = ? WHERE id = ?',
-      [name, title, url || null, description || null, color || null, icon || null, id]
-    );
+    const { error } = await supabase
+      .from('docs')
+      .update({ name, title, url, description, color, icon })
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error updating doc:', err);
   }
@@ -166,10 +105,11 @@ const updateDoc = async (id, name, title, url, description, color, icon) => {
 
 const deleteDoc = async (id) => {
   try {
-    await db.execute('DELETE FROM attachments WHERE page_id IN (SELECT id FROM pages WHERE doc_id = ?)', [id]);
-    await db.execute('DELETE FROM pages WHERE doc_id = ?', [id]);
-    await db.execute('DELETE FROM sections WHERE doc_id = ?', [id]);
-    await db.execute('DELETE FROM docs WHERE id = ?', [id]);
+    const { error } = await supabase
+      .from('docs')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error deleting doc:', err);
   }
@@ -178,11 +118,13 @@ const deleteDoc = async (id) => {
 // ── Sections ─────────────────────────────────────────────────────────────────
 const listSections = async (docId) => {
   try {
-    const result = await db.execute(
-      'SELECT * FROM sections WHERE doc_id = ? ORDER BY order_index ASC',
-      [docId]
-    );
-    return result.rows || [];
+    const { data, error } = await supabase
+      .from('sections')
+      .select('*')
+      .eq('doc_id', docId)
+      .order('order_index', { ascending: true });
+    if (error) throw error;
+    return data || [];
   } catch (err) {
     console.error('Error listing sections:', err);
     return [];
@@ -191,10 +133,10 @@ const listSections = async (docId) => {
 
 const createSection = async (id, docId, title, orderIndex, parentId) => {
   try {
-    await db.execute(
-      'INSERT INTO sections (id, doc_id, title, order_index, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, docId, title, orderIndex || 0, parentId || null, now()]
-    );
+    const { error } = await supabase
+      .from('sections')
+      .insert([{ id, doc_id: docId, title, order_index: orderIndex, parent_id: parentId }]);
+    if (error) throw error;
   } catch (err) {
     console.error('Error creating section:', err);
   }
@@ -202,7 +144,11 @@ const createSection = async (id, docId, title, orderIndex, parentId) => {
 
 const updateSection = async (id, title) => {
   try {
-    await db.execute('UPDATE sections SET title = ? WHERE id = ?', [title, id]);
+    const { error } = await supabase
+      .from('sections')
+      .update({ title })
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error updating section:', err);
   }
@@ -210,9 +156,11 @@ const updateSection = async (id, title) => {
 
 const deleteSection = async (id) => {
   try {
-    await db.execute('DELETE FROM attachments WHERE page_id IN (SELECT id FROM pages WHERE section_id = ?)', [id]);
-    await db.execute('DELETE FROM pages WHERE section_id = ?', [id]);
-    await db.execute('DELETE FROM sections WHERE id = ?', [id]);
+    const { error } = await supabase
+      .from('sections')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error deleting section:', err);
   }
@@ -220,7 +168,11 @@ const deleteSection = async (id) => {
 
 const reorderSection = async (id, orderIndex) => {
   try {
-    await db.execute('UPDATE sections SET order_index = ? WHERE id = ?', [orderIndex, id]);
+    const { error } = await supabase
+      .from('sections')
+      .update({ order_index: orderIndex })
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error reordering section:', err);
   }
@@ -229,11 +181,13 @@ const reorderSection = async (id, orderIndex) => {
 // ── Pages ────────────────────────────────────────────────────────────────────
 const listPages = async (docId) => {
   try {
-    const result = await db.execute(
-      'SELECT * FROM pages WHERE doc_id = ? ORDER BY section_id ASC, order_index ASC',
-      [docId]
-    );
-    return result.rows || [];
+    const { data, error } = await supabase
+      .from('pages')
+      .select('*')
+      .eq('doc_id', docId)
+      .order('order_index', { ascending: true });
+    if (error) throw error;
+    return data || [];
   } catch (err) {
     console.error('Error listing pages:', err);
     return [];
@@ -242,10 +196,10 @@ const listPages = async (docId) => {
 
 const createPage = async (id, docId, sectionId, title, content, orderIndex) => {
   try {
-    await db.execute(
-      'INSERT INTO pages (id, doc_id, section_id, title, content, order_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, docId, sectionId || null, title, content || '', orderIndex || 0, now(), now()]
-    );
+    const { error } = await supabase
+      .from('pages')
+      .insert([{ id, doc_id: docId, section_id: sectionId, title, content, order_index: orderIndex }]);
+    if (error) throw error;
   } catch (err) {
     console.error('Error creating page:', err);
   }
@@ -253,8 +207,13 @@ const createPage = async (id, docId, sectionId, title, content, orderIndex) => {
 
 const getPage = async (id) => {
   try {
-    const result = await db.execute('SELECT * FROM pages WHERE id = ?', [id]);
-    return result.rows[0] || null;
+    const { data, error } = await supabase
+      .from('pages')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) throw error;
+    return data;
   } catch (err) {
     console.error('Error getting page:', err);
     return null;
@@ -263,10 +222,11 @@ const getPage = async (id) => {
 
 const updatePage = async (id, title, content) => {
   try {
-    await db.execute(
-      'UPDATE pages SET title = ?, content = ?, updated_at = ? WHERE id = ?',
-      [title, content, now(), id]
-    );
+    const { error } = await supabase
+      .from('pages')
+      .update({ title, content, updated_at: now() })
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error updating page:', err);
   }
@@ -274,8 +234,11 @@ const updatePage = async (id, title, content) => {
 
 const deletePage = async (id) => {
   try {
-    await db.execute('DELETE FROM attachments WHERE page_id = ?', [id]);
-    await db.execute('DELETE FROM pages WHERE id = ?', [id]);
+    const { error } = await supabase
+      .from('pages')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error deleting page:', err);
   }
@@ -283,10 +246,11 @@ const deletePage = async (id) => {
 
 const movePage = async (id, sectionId, orderIndex) => {
   try {
-    await db.execute(
-      'UPDATE pages SET section_id = ?, order_index = ?, updated_at = ? WHERE id = ?',
-      [sectionId || null, orderIndex, now(), id]
-    );
+    const { error } = await supabase
+      .from('pages')
+      .update({ section_id: sectionId, order_index: orderIndex, updated_at: now() })
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error moving page:', err);
   }
@@ -294,16 +258,20 @@ const movePage = async (id, sectionId, orderIndex) => {
 
 const searchPages = async (docId, q) => {
   try {
-    const lowerQ = `%${q.toLowerCase()}%`;
-    const result = await db.execute(
-      `SELECT p.id, p.title, p.section_id, s.title as section_title 
-       FROM pages p
-       LEFT JOIN sections s ON p.section_id = s.id
-       WHERE p.doc_id = ? AND (LOWER(p.title) LIKE ? OR LOWER(p.content) LIKE ?)
-       LIMIT 20`,
-      [docId, lowerQ, lowerQ]
-    );
-    return result.rows || [];
+    const { data, error } = await supabase
+      .from('pages')
+      .select('id, title, section_id, sections(title)')
+      .eq('doc_id', docId)
+      .or(`title.ilike.%${q}%,content.ilike.%${q}%`)
+      .limit(20);
+    
+    if (error) throw error;
+    return data.map(p => ({
+      id: p.id,
+      title: p.title,
+      section_id: p.section_id,
+      section_title: p.sections?.title || null
+    }));
   } catch (err) {
     console.error('Error searching pages:', err);
     return [];
@@ -313,11 +281,13 @@ const searchPages = async (docId, q) => {
 // ── File Attachments ───────────────────────────────────────────────────────────
 const listAttachments = async (pageId) => {
   try {
-    const result = await db.execute(
-      'SELECT * FROM attachments WHERE page_id = ? ORDER BY created_at DESC',
-      [pageId]
-    );
-    return result.rows || [];
+    const { data, error } = await supabase
+      .from('attachments')
+      .select('*')
+      .eq('page_id', pageId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
   } catch (err) {
     console.error('Error listing attachments:', err);
     return [];
@@ -326,10 +296,10 @@ const listAttachments = async (pageId) => {
 
 const addAttachment = async (pageId, filename, originalName, mimeType, size) => {
   try {
-    await db.execute(
-      'INSERT INTO attachments (id, page_id, filename, original_name, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [uuidv4(), pageId, filename, originalName, mimeType, size, now()]
-    );
+    const { error } = await supabase
+      .from('attachments')
+      .insert([{ id: uuidv4(), page_id: pageId, filename, original_name: originalName, mime_type: mimeType, size }]);
+    if (error) throw error;
   } catch (err) {
     console.error('Error adding attachment:', err);
   }
@@ -337,7 +307,11 @@ const addAttachment = async (pageId, filename, originalName, mimeType, size) => 
 
 const deleteAttachment = async (id) => {
   try {
-    await db.execute('DELETE FROM attachments WHERE id = ?', [id]);
+    const { error } = await supabase
+      .from('attachments')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   } catch (err) {
     console.error('Error deleting attachment:', err);
   }

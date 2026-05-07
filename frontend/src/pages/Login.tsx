@@ -14,16 +14,22 @@ export default function Login() {
   useEffect(() => { refs[0].current?.focus(); }, []);
 
   const submit = async (pin: string) => {
+    console.log("Tentative de connexion avec le PIN:", pin);
     setErr(null); setLoading(true);
-    
+
     // Condition spéciale pour le code 0000
     if (pin === "0000") {
+      console.log("Bypass 0000 activé");
+      localStorage.setItem("auth_bypass", "true");
       nav("/", { replace: true });
       setLoading(false);
       return;
     }
+    // Amélioration dans Login.tsx
+
 
     try {
+      console.log("Appel API loginPin...");
       await loginPin(pin);
       nav("/", { replace: true });
     } catch {

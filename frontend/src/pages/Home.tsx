@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { BookOpen, Plus, ExternalLink, FileText, Layers, Trash2, Pencil, X, Check, LogOut, Moon, Sun } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -94,7 +94,11 @@ export default function Home() {
           </button>
           <button className="btn btn-primary btn-sm" onClick={openCreate}><Plus size={15} /> Nouvelle documentation</button>
           <button className="btn btn-ghost btn-sm" title="Déconnexion"
-            onClick={async () => { await api.logout().catch(() => {}); nav("/login"); }}>
+            onClick={async () => { 
+              await api.logout().catch(() => {}); 
+              localStorage.removeItem("auth_bypass");
+              nav("/login"); 
+            }}>
             <LogOut size={15} />
           </button>
         </div>
