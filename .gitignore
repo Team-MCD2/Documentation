@@ -4,3 +4,9 @@ __pycache__/
 .env
 data/
 storage/
+node_modules/
+dist/
+build/
+.vite/
+*.log
+.DS_Store
