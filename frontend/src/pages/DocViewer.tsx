@@ -471,6 +471,7 @@ export default function DocViewer() {
           <motion.div
             initial={{ x: 320 }} animate={{ x: 0 }} exit={{ x: 320 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
+            className="attachments-panel"
             style={{ position: "fixed", right: 0, top: 52, bottom: 0, width: 320, background: "var(--sidebar-bg)", borderLeft: "1px solid var(--border)", zIndex: 90, display: "flex", flexDirection: "column" }}
           >
             <div style={{ padding: "1rem", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
